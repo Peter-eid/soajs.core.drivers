@@ -19,39 +19,43 @@ const kubeLib = {
 
         return namespace;
     },
-
-    getDeployer(options, cb) {
-        let kubeURL = config.kubernetes.apiHost;
-
-        let kubernetes = {};
-        let kubeConfig = {
-            url: kubeURL,
-            auth: {
-                bearer: ''
-            },
-            request: {
-                strictSSL: false
-            }
-        };
-
-        if (options && options.deployerConfig && options.deployerConfig.auth && options.deployerConfig.auth.token) {
-            kubeConfig.auth.bearer = options.deployerConfig.auth.token;
-        }
-
-        if (process.env.SOAJS_TEST_KUBE_PORT) {
-            //NOTE: unit testing on travis requires a different setup
-            kubeConfig.url = 'http://localhost:' + process.env.SOAJS_TEST_KUBE_PORT;
-            delete kubeConfig.auth;
-        }
-
-        kubeConfig.version = 'v1';
-        kubernetes.core = new K8Api.Core(kubeConfig);
-
-        kubeConfig.version = 'v1beta1';
-        kubernetes.extensions = new K8Api.Extensions(kubeConfig);
-
-        return cb(null, kubernetes);
-    },
+	
+	getDeployer(options, cb) {
+		let kubeURL = config.kubernetes.apiHost;
+		
+		let kubernetes = {};
+		if (options.params && options.params.deployment && options.params.deployment.external && options.params.deployment.deployer) {
+			kubernetes = options.params.deployment.deployer;
+		}
+		else {
+			let kubeConfig = {
+				url: kubeURL,
+				auth: {
+					bearer: ''
+				},
+				request: {
+					strictSSL: false
+				}
+			};
+			
+			if (options && options.deployerConfig && options.deployerConfig.auth && options.deployerConfig.auth.token) {
+				kubeConfig.auth.bearer = options.deployerConfig.auth.token;
+			}
+			
+			if (process.env.SOAJS_TEST_KUBE_PORT) {
+				//NOTE: unit testing on travis requires a different setup
+				kubeConfig.url = 'http://localhost:' + process.env.SOAJS_TEST_KUBE_PORT;
+				delete kubeConfig.auth;
+			}
+			
+			kubeConfig.version = 'v1';
+			kubernetes.core = new K8Api.Core(kubeConfig);
+			
+			kubeConfig.version = 'v1beta1';
+			kubernetes.extensions = new K8Api.Extensions(kubeConfig);
+		}
+		return cb(null, kubernetes);
+	},
 
     buildNameSpaceRecord (options) {
         let record = {

@@ -39,11 +39,17 @@ const lib = {
 
         function redirectToProxy() {
             let ports = options.soajs.registry.serviceConfig.ports;
-            deployer = new Docker({
-                host: ((process.env.SOAJS_ENV) ? process.env.SOAJS_ENV.toLowerCase() : 'dev') + '-controller',
-                port: ports.controller + ports.maintenanceInc,
-                version: 'proxySocket'
-            });
+            //deploying from installer
+            if (options.params && options.params.deployment && options.params.deployment.external && options.params.deployment.deployer){
+	            deployer = options.params.deployment.deployer;
+            }
+            else {
+	            deployer = new Docker({
+		            host: ((process.env.SOAJS_ENV) ? process.env.SOAJS_ENV.toLowerCase() : 'dev') + '-controller',
+		            port: ports.controller + ports.maintenanceInc,
+		            version: 'proxySocket'
+	            });
+            }
             lib.ping({ deployer }, (error) => {
                 utils.checkError(error, 600, cb, () => { //TODO: fix params
                     return cb(null, deployer);

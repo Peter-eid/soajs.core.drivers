@@ -244,6 +244,9 @@ var engine = {
 
             service.spec.ports = ports;
         }
+        else {
+        	service = null;
+        }
         let payload = {};
         if (options.params.replication.mode === 'deployment') {
             let deploymentSchemaPath = __dirname + '/../schemas/kubernetes/deployment.template.js';
