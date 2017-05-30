@@ -208,7 +208,7 @@ var engine = {
 		    }
 	    }
 
-        let ports = [], service = {};
+        let ports = [], service = null;
         if (options.params.ports && options.params.ports.length > 0) {
             service = utils.cloneObj(require(__dirname + '/../schemas/kubernetes/service.template.js'));
             service.metadata.name = cleanLabel(options.params.name) + '-service';
@@ -471,6 +471,8 @@ var engine = {
                         		    }
                         	    }
 
+                                deployment.metadata.labels = options.params.newBuild.labels;
+                                deployment.spec.template.metadata.labels = options.params.newBuild.labels;
                                 deployment.spec.template.spec.containers[0].env = lib.buildEnvList({ envs: options.params.newBuild.variables });
                                 deployment.spec.template.spec.containers[0].image = options.params.newBuild.image;
                                 deployment.spec.template.spec.containers[0].imagePullPolicy = options.params.newBuild.imagePullPolicy;
