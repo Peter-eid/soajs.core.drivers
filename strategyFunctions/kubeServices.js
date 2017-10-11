@@ -3,12 +3,15 @@
 
 const utils = require('../utils/utils.js');
 const lib = require('../utils/kubernetes.js');
+const autoscaler = require('./kubeAutoscale.js');
 
 const errorFile = require('../utils/errors.js');
 
 const async = require('async');
 const request = require('request');
-var utilLog = require('util');
+const utilLog = require('util');
+const path = require('path');
+
 const gridfsColl = 'fs.files';
 
 var engine = {
@@ -29,7 +32,7 @@ var engine = {
                         }, function (error, foundNamespace) {
                             utils.checkError(foundNamespace, 672, cb, () => {
                                 utilLog.log('Creating a new namespace: ' + namespaceName + ' ...');
-                                var namespace = {
+                                let namespace = {
                                     kind: 'Namespace',
                                     apiVersion: 'v1',
                                     metadata: {
@@ -183,7 +186,16 @@ var engine = {
                             }
 
                             record.tasks = pods;
-                            return callback(null, record);
+
+                            options.params = { id: oneDeployment.metadata.name };
+                            autoscaler.getAutoscaler(options, (error, hpa) => {
+                                if (error) {
+                                    return callback(error);
+                                }
+
+                                record.autoscaler = hpa;
+                                return callback(null, record);
+                            });
                         });
                     });
                 });
@@ -199,7 +211,7 @@ var engine = {
      *
      */
     deployService (options, cb) {
-	    for(var i =0; i < options.params.variables.length; i++){
+	    for(let i =0; i < options.params.variables.length; i++){
 		    if(options.params.variables[i].indexOf('$SOAJS_DEPLOY_HA') !== -1){
 			    options.params.variables[i] = options.params.variables[i].replace("$SOAJS_DEPLOY_HA","kubernetes");
 			    break;
@@ -208,17 +220,26 @@ var engine = {
 
         let ports = [], service = null;
         if (options.params.ports && options.params.ports.length > 0) {
-            service = utils.cloneObj(require(__dirname + '/../schemas/kubernetes/service.template.js'));
-            service.metadata.name = cleanLabel(options.params.name) + '-service';
+            let serviceSchemaPath = path.join(__dirname, '../schemas/kubernetes/service.template.js');
+            if (require.resolve(serviceSchemaPath)) {
+                delete require.cache[require.resolve(serviceSchemaPath)];
+            }
+            service = utils.cloneObj(require(serviceSchemaPath));
+            if(options.params.customName) {
+                service.metadata.name = cleanLabel(options.params.name);
+            }
+            else {
+                service.metadata.name = cleanLabel(options.params.name) + '-service';
+            }
 
             service.metadata.labels = options.params.labels;
             service.spec.selector = { 'soajs.service.label': options.params.labels['soajs.service.label'] };
 
             options.params.ports.forEach((onePortEntry, portIndex) => {
                 let portConfig = {
-                    protocol: 'TCP',
+                    protocol: ((onePortEntry.protocol) ? onePortEntry.protocol.toUpperCase() : 'TCP'),
                     name: onePortEntry.name || 'port' + portIndex,
-                    port: onePortEntry.target,
+                    port: onePortEntry.port || onePortEntry.target,
                     targetPort: onePortEntry.target
                 };
 
@@ -235,6 +256,10 @@ var engine = {
                     }
 
                     portConfig.name = onePortEntry.name || 'published' + portConfig.name;
+
+                    if(onePortEntry.preserveClientIP) {
+                        service.spec.externalTrafficPolicy = 'Local';
+                    }
                 }
 
                 ports.push(portConfig);
@@ -247,7 +272,7 @@ var engine = {
         }
         let payload = {};
         if (options.params.replication.mode === 'deployment') {
-            let deploymentSchemaPath = __dirname + '/../schemas/kubernetes/deployment.template.js';
+            let deploymentSchemaPath = path.join(__dirname, '../schemas/kubernetes/deployment.template.js');
             if (require.resolve(deploymentSchemaPath)) {
                 delete require.cache[require.resolve(deploymentSchemaPath)];
             }
@@ -255,7 +280,7 @@ var engine = {
             options.params.type = 'deployment';
         }
         else if (options.params.replication.mode === 'daemonset') {
-            let daemonsetSchemaPath = __dirname + '/../schemas/kubernetes/daemonset.template.js';
+            let daemonsetSchemaPath = path.join(__dirname, '../schemas/kubernetes/daemonset.template.js');
             if (require.resolve(daemonsetSchemaPath)) {
                 delete require.cache[require.resolve(daemonsetSchemaPath)];
             }
@@ -308,6 +333,12 @@ var engine = {
             };
         }
 
+        if (options.params.cpuLimit) {
+            if (!payload.spec.template.spec.containers[0].resources) payload.spec.template.spec.containers[0].resources = {};
+            if (!payload.spec.template.spec.containers[0].resources.limits) payload.spec.template.spec.containers[0].resources.limits = {};
+            payload.spec.template.spec.containers[0].resources.limits.cpu = options.params.cpuLimit;
+        }
+
         if (ports && ports.length > 0) {
             payload.spec.template.spec.containers[0].ports = [];
             ports.forEach((onePort) => {
@@ -317,29 +348,11 @@ var engine = {
                 });
             });
         }
-
-        //NOTE: for custom deployments, only one volume is supported for now
-        if (options.params.type === 'custom') {
-            if (options.params.volume) {
-                payload.spec.template.spec.volumes.push({
-                    name: options.params.volume.name,
-                    hostPath: {
-                        path: options.params.volume.source
-                    }
-                });
-
-                payload.spec.template.spec.containers[0].volumeMounts.push({
-                    mountPath: options.params.volume.target,
-                    name: options.params.volume.name
-                });
-            }
-        }
-        else {
-            if (options.params.voluming && options.params.voluming.volumes && options.params.voluming.volumeMounts) {
-                payload.spec.template.spec.volumes = payload.spec.template.spec.volumes.concat(options.params.voluming.volumes);
-                payload.spec.template.spec.containers[0].volumeMounts = payload.spec.template.spec.containers[0].volumeMounts.concat(options.params.voluming.volumeMounts);
-            }
-        }
+	    //[a-z0-9]([-a-z0-9]*[a-z0-9])?
+	    if (options.params.voluming && options.params.voluming.volumes && options.params.voluming.volumeMounts) {
+		    payload.spec.template.spec.volumes = payload.spec.template.spec.volumes.concat(options.params.voluming.volumes);
+		    payload.spec.template.spec.containers[0].volumeMounts = payload.spec.template.spec.containers[0].volumeMounts.concat(options.params.voluming.volumeMounts);
+	    }
 
         //added support for annotations
 		if (options.params.annotations){
@@ -366,19 +379,31 @@ var engine = {
 				    if (service) {
 					    deployer.core.namespaces(namespace).services.post({body: service}, (error) => {
 						    utils.checkError(error, 525, cb, () => {
-							    deployer.extensions.namespaces(namespace)[options.params.type].post({body: payload}, (error) => {
-								    utils.checkError(error, 526, cb, cb.bind(null, null, true));
-							    });
+                                return createDeployment();
 						    });
 					    });
 				    }
 				    else {
-					    deployer.extensions.namespaces(namespace)[options.params.type].post({body: payload}, (error) => {
-						    utils.checkError(error, 526, cb, cb.bind(null, null, true));
-					    });
+                        return createDeployment();
 				    }
 			    });
 		    });
+
+            function createDeployment() {
+                deployer.extensions.namespaces(namespace)[options.params.type].post({body: payload}, (error) => {
+                    utils.checkError(error, 526, cb, () => {
+                        checkServiceAccount(deployer, namespace, (error) => {
+                            utils.checkError(error, 682, cb, () => {
+                                checkAutoscaler(options, (error) => {
+                                    utils.checkError(error, (error && error.code) || 676, cb, () => {
+                                        return cb(null, true);
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            }
 	    });
 
         function cleanLabel(label) {
@@ -399,7 +424,7 @@ var engine = {
                         return cb(null, true);
                     }
 
-                    var namespace = {
+                    let namespace = {
                         kind: 'Namespace',
                         apiVersion: 'v1',
                         metadata: {
@@ -412,6 +437,29 @@ var engine = {
                     deployer.core.namespace.post({body: namespace}, cb);
                 });
             });
+        }
+
+        function checkAutoscaler(options, cb) {
+            if(options.params.autoScale && Object.keys(options.params.autoScale).length > 0) {
+                let name = cleanLabel(options.params.name);
+                let type = options.params.type;
+                options.params = options.params.autoScale;
+                options.params.id = name;
+                options.params.type = type;
+                return autoscaler.createAutoscaler(options, cb);
+            }
+            else {
+                return cb(null, true);
+            }
+        }
+
+        function checkServiceAccount(deployer, namespace, cb) {
+            if(options.params.serviceAccount && Object.keys(options.params.serviceAccount).length > 0) {
+                return deployer.core.namespaces(namespace).serviceaccounts.post({ body: options.params.serviceAccount }, cb);
+            }
+            else {
+                return cb(null, true);
+            }
         }
     },
 
@@ -462,13 +510,14 @@ var engine = {
                                 });
                             }
                             else if (options.params.action === 'rebuild') {
-                                for(var i = 0; i < options.params.newBuild.variables.length; i++){
-                        		    if(options.params.newBuild.variables[i].indexOf('$SOAJS_DEPLOY_HA') !== -1){
-                        			    options.params.newBuild.variables[i] = options.params.newBuild.variables[i].replace("$SOAJS_DEPLOY_HA","kubernetes");
-                        			    break;
-                        		    }
-                        	    }
-
+                            	if (options.params.newBuild.variables && Array.isArray(options.params.newBuild.variables)){
+		                            for(let i = 0; i < options.params.newBuild.variables.length; i++){
+			                            if(options.params.newBuild.variables[i].indexOf('$SOAJS_DEPLOY_HA') !== -1){
+				                            options.params.newBuild.variables[i] = options.params.newBuild.variables[i].replace("$SOAJS_DEPLOY_HA","kubernetes");
+				                            break;
+			                            }
+		                            }
+	                            }
                                 deployment.metadata.labels = options.params.newBuild.labels;
                                 deployment.spec.template.metadata.labels = options.params.newBuild.labels;
                                 deployment.spec.template.spec.containers[0].env = lib.buildEnvList({ envs: options.params.newBuild.variables });
@@ -479,6 +528,18 @@ var engine = {
                                 if (options.params.newBuild.voluming && Object.keys(options.params.newBuild.voluming).length > 0) {
                                     deployment.spec.template.spec.volumes = options.params.newBuild.voluming.volumes || [];
                                     deployment.spec.template.spec.containers[0].volumeMounts = options.params.newBuild.voluming.volumeMounts || [];
+                                }
+
+                                if(options.params.newBuild.memoryLimit) {
+                                    if(!deployment.spec.template.spec.containers[0].resources) deployment.spec.template.spec.containers[0].resources = {};
+                                    if(!deployment.spec.template.spec.containers[0].resources.limits) deployment.spec.template.spec.containers[0].resources.limits = {};
+                                    deployment.spec.template.spec.containers[0].resources.limits.memory = options.params.newBuild.memoryLimit;
+                                }
+
+                                if(options.params.newBuild.cpuLimit) {
+                                    if(!deployment.spec.template.spec.containers[0].resources) deployment.spec.template.spec.containers[0].resources = {};
+                                    if(!deployment.spec.template.spec.containers[0].resources.limits) deployment.spec.template.spec.containers[0].resources.limits = {};
+                                    deployment.spec.template.spec.containers[0].resources.limits.cpu = options.params.newBuild.cpuLimit;
                                 }
 
                                 if (options.params.newBuild.ports && options.params.newBuild.ports.length > 0) {
@@ -529,11 +590,11 @@ var engine = {
         });
 
         function AddServicePorts(service, ports) {
-            let portsOutput = [];
+            let portsOutput = [], preserveClientIP = false;
             if (ports && ports.length > 0) {
                 ports.forEach((onePortEntry, portIndex) => {
                     let portConfig = {
-                        protocol: 'TCP',
+                        protocol: ((onePortEntry.protocol) ? onePortEntry.protocol.toUpperCase() : 'TCP'),
                         name: onePortEntry.name || 'port' + portIndex,
                         port: onePortEntry.target,
                         targetPort: onePortEntry.target
@@ -552,15 +613,27 @@ var engine = {
                         }
 
                         portConfig.name = onePortEntry.name || 'published' + portConfig.name;
+
+                        if(onePortEntry.preserveClientIP) {
+                            service.spec.externalTrafficPolicy = 'Local';
+                            preserveClientIP = true;
+                        }
                     }
 
                     portsOutput.push(portConfig);
                 });
 
+                if(!preserveClientIP && service && service.spec && service.spec.externalTrafficPolicy === 'Local') {
+                    delete service.spec.externalTrafficPolicy;
+                }
+
                 service.spec.ports = portsOutput;
                 return service;
             }
         }
+	    function cleanLabel(label) {
+		    return label.toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
+	    }
     },
 
     /**
@@ -571,10 +644,11 @@ var engine = {
      *
      */
     inspectService (options, cb) {
+        let contentType = options.params.mode || 'deployment';
         lib.getDeployer(options, (error, deployer) => {
             utils.checkError(error, 520, cb, () => {
                 let namespace = lib.buildNameSpace(options);
-                deployer.extensions.namespaces(namespace).deployment.get(options.params.id, (error, deployment) => {
+                deployer.extensions.namespaces(namespace)[contentType].get(options.params.id, (error, deployment) => {
                     utils.checkError(error, 536, cb, () => {
                         let deploymentRecord = lib.buildDeploymentRecord({ deployment });
 
@@ -680,18 +754,39 @@ var engine = {
                                             deployer.core.namespaces(namespace).services.delete({name: oneService.metadata.name}, callback);
                                         }, (error) => {
                                             utils.checkError(error, 534, cb, () => {
-                                                cleanup(deployer, filter);
+                                                deleteAutoscaler((error) => {
+                                                    utils.checkError(error, 678, cb, () => {
+                                                        cleanup(deployer, filter);
+                                                    });
+                                                })
                                             });
                                         });
                                     }
                                     else {
-                                        cleanup(deployer, filter);
+                                        deleteAutoscaler((error) => {
+                                            utils.checkError(error, 678, cb, () => {
+                                                cleanup(deployer, filter);
+                                            });
+                                        })
                                     }
                                 });
                             });
                         });
                     });
                 });
+            });
+        }
+
+        function deleteAutoscaler(cb) {
+            let autoscalerOptions = Object.assign({}, options);
+            autoscalerOptions.params = { id: options.params.id };
+            let namespace = lib.buildNameSpace(autoscalerOptions);
+            autoscaler.getAutoscaler(autoscalerOptions, (error, hpa) => {
+                if(error) return cb(error);
+
+                if(!hpa || Object.keys(hpa).length === 0) return cb();
+
+                return autoscaler.deleteAutoscaler(autoscalerOptions, cb);
             });
         }
 
@@ -850,6 +945,26 @@ var engine = {
                                 }, cb);
                             });
                         });
+                    });
+                });
+            });
+        });
+    },
+
+
+    /**
+     * List kubernetes services in all namespaces, return raw data
+     *
+     * @param {Object} options
+     * @param {Function} cb
+     *
+     */
+    listKubeServices (options, cb) {
+        lib.getDeployer(options, (error, deployer) => {
+            utils.checkError(error, 520, cb, () => {
+                deployer.core.services.get({}, (error, servicesList) => {
+                    utils.checkError(error, 533, cb, () => {
+                        return cb(null, (servicesList && servicesList.items) ? servicesList.items : []);
                     });
                 });
             });

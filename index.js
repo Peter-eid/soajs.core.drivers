@@ -1,5 +1,12 @@
 /*jshint esversion: 6 */
 
+/*
+ * Core drivers use dockerode and kubernetes-client npm modules to communicate with the docker and kubernetes APIs
+ *      - dockerode: https://www.npmjs.com/package/dockerode
+ *      - kubernetes-client: https://www.npmjs.com/package/kubernetes-client
+ */
+
+
 "use strict";
 
 let fs = require('fs');
@@ -369,6 +376,103 @@ module.exports = {
             utils.checkError(error, 518, cb, () => {
                 checkIfSupported({strategy: strategy, function: 'maintenance'}, cb, () => {
                     strategy.maintenance(options, cb);
+                });
+            });
+        });
+    },
+
+    /**
+    * List kubernetes services, return raw response
+    *
+    * @param {Object} options
+    * @param {Function} cb
+    * @returns {*}
+    */
+    listKubeServices (options, cb) {
+        getStrategy(options, (error, strategy) => {
+            utils.checkError(error, 518, cb, () => {
+                checkIfSupported({strategy: strategy, function: 'listKubeServices'}, cb, () => {
+                    strategy.listKubeServices(options, cb);
+                });
+            });
+        });
+    },
+
+    /**
+     * Get an autoscaler for a given deployment
+     * @param  {Object}   options
+     * @param  {Function} cb
+     *
+     */
+    getAutoscaler (options, cb) {
+        getStrategy(options, (error, strategy) => {
+            utils.checkError(error, 518, cb, () => {
+                checkIfSupported({strategy: strategy, function: 'getAutoscaler'}, cb, () => {
+                    strategy.getAutoscaler(options, cb);
+                });
+            });
+        });
+    },
+
+    /**
+     * Create an autoscaler for a given deployment
+     * @param  {Object}   options
+     * @param  {Function} cb
+     *
+     */
+    createAutoscaler (options, cb) {
+        getStrategy(options, (error, strategy) => {
+            utils.checkError(error, 518, cb, () => {
+                checkIfSupported({strategy: strategy, function: 'createAutoscaler'}, cb, () => {
+                    strategy.createAutoscaler(options, cb);
+                });
+            });
+        });
+    },
+
+    /**
+     * Update an autoscaler for a given deployment
+     * @param  {Object}   options
+     * @param  {Function} cb
+     *
+     */
+    updateAutoscaler (options, cb) {
+        getStrategy(options, (error, strategy) => {
+            utils.checkError(error, 518, cb, () => {
+                checkIfSupported({strategy: strategy, function: 'updateAutoscaler'}, cb, () => {
+                    strategy.updateAutoscaler(options, cb);
+                });
+            });
+        });
+    },
+
+    /**
+     * Delete an autoscaler for a given deployment
+     * @param  {Object}   options
+     * @param  {Function} cb
+     *
+     */
+    deleteAutoscaler (options, cb) {
+        getStrategy(options, (error, strategy) => {
+            utils.checkError(error, 518, cb, () => {
+                checkIfSupported({strategy: strategy, function: 'deleteAutoscaler'}, cb, () => {
+                    strategy.deleteAutoscaler(options, cb);
+                });
+            });
+        });
+    },
+
+    /**
+     * Create any type of kubernetes resource
+     * @param  {Object}   options
+     * @param  {Function} cb
+     *
+     */
+    manageResources (options, cb) {
+        getStrategy(options, (error, strategy) => {
+            utils.checkError(error, 518, cb, () => {
+                checkIfSupported({strategy: strategy, function: 'manageResources'}, cb, () => {
+                    strategy.manageResources(options, cb);
                 });
             });
         });

@@ -97,7 +97,7 @@ var engine = {
 
         let payload = utils.cloneObj(require(serviceSchemaPath));
 
-        for(var i =0; i < options.params.variables.length; i++){
+        for(let i =0; i < options.params.variables.length; i++){
 	        if(options.params.variables[i].indexOf('$SOAJS_DEPLOY_HA') !== -1){
 		        options.params.variables[i] = options.params.variables[i].replace("$SOAJS_DEPLOY_HA", "swarm");
 	        }
@@ -163,11 +163,17 @@ var engine = {
         if (options.params.ports && options.params.ports.length > 0) {
             options.params.ports.forEach((onePortEntry) => {
                 if (onePortEntry.isPublished) {
-                    payload.EndpointSpec.ports.push({
-                        Protocol: 'tcp',
+                    let port = {
+                        Protocol: onePortEntry.protocol || 'tcp',
                         TargetPort: onePortEntry.target,
                         PublishedPort: onePortEntry.published
-                    });
+                    };
+
+                    if(onePortEntry.preserveClientIP) {
+                        port.PublishMode = 'host';
+                    }
+
+                    payload.EndpointSpec.ports.push(port);
                 }
             });
         }
@@ -219,7 +225,7 @@ var engine = {
                             });
                         }
                         else if (options.params.action === 'rebuild') {
-                            for(var i =0; i < options.params.newBuild.variables.length; i++){
+                            for(let i =0; i < options.params.newBuild.variables.length; i++){
                     	        if(options.params.newBuild.variables[i].indexOf('$SOAJS_DEPLOY_HA') !== -1){
                     		        options.params.newBuild.variables[i] = options.params.newBuild.variables[i].replace("$SOAJS_DEPLOY_HA", "swarm");
                     	        }
@@ -233,22 +239,36 @@ var engine = {
                             update.TaskTemplate.ContainerSpec.Image = options.params.newBuild.image;
                             update.TaskTemplate.ContainerSpec.Command = options.params.newBuild.command;
                             update.TaskTemplate.ContainerSpec.Args = options.params.newBuild.args;
+                            update.Labels = options.params.newBuild.labels;
                             update.TaskTemplate.ContainerSpec.Labels = options.params.newBuild.labels;
                             if (options.params.newBuild.voluming && options.params.newBuild.voluming.volumes) {
                                 update.TaskTemplate.ContainerSpec.Mounts = options.params.newBuild.voluming.volumes;
                             }
 
+                            if(options.params.newBuild.memoryLimit) {
+                                if(!update.TaskTemplate.Resources) update.TaskTemplate.Resources = {};
+                                if(!update.TaskTemplate.Resources.Limits) update.TaskTemplate.Resources.Limits = {};
+                                if(!update.TaskTemplate.Resources.Limits.MemoryBytes) update.TaskTemplate.Resources.Limits.MemoryBytes = {};
+                                update.TaskTemplate.Resources.Limits.MemoryBytes = options.params.newBuild.memoryLimit;
+                            }
+
                             if (options.params.newBuild.ports && options.params.newBuild.ports.length > 0) {
-                                if (!update.EndpointSpec) update.EndpointSpec = { Mode: 'vip', };
+                                if (!update.EndpointSpec) update.EndpointSpec = { Mode: 'vip' };
                                 update.EndpointSpec.Ports = [];
 
                                 options.params.newBuild.ports.forEach((onePortEntry) => {
                                     if (onePortEntry.isPublished) {
-	                                    update.EndpointSpec.Ports.push({
-                                            Protocol: 'tcp',
+                                        let port = {
+                                            Protocol: onePortEntry.protocol || 'tcp',
                                             TargetPort: onePortEntry.target,
                                             PublishedPort: onePortEntry.published
-                                        });
+                                        };
+
+                                        if(onePortEntry.preserveClientIP) {
+                                            port.PublishMode = 'host';
+                                        }
+
+	                                    update.EndpointSpec.Ports.push(port);
                                     }
                                 });
                             }

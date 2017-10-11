@@ -1,7 +1,7 @@
 {
   "name": "soajs.core.drivers",
   "description": "SOAJS Driver Strategies",
-  "version": "0.0.9",
+  "version": "0.0.15",
   "author": {
     "name": "soajs team",
     "email": "team@soajs.org"
@@ -18,18 +18,14 @@
     "test": "grunt test"
   },
   "dependencies": {
-    "async": "^2.1.4",
-    "dockerode": "aff04/dockerode.git",
-    "gridfs-stream": "*",
-    "kubernetes-client": "^3.0.0",
-    "request": "*",
-    "jshint": "2.9.4",
-    "lodash": "4.17.4",
-    "mocha": "3.2.0",
-    "shelljs": "0.7.5"
+    "async": "2.1.4",
+    "dockerode": "soajs/dockerode.git",
+    "gridfs-stream": "1.1.1",
+    "kubernetes-client": "soajs/kubernetes-client.git#v3.10.1",
+    "request": "2.81.0",
+    "soajs.core.libs": "1.0.1"
   },
   "devDependencies": {
-    "bcrypt": "1.0.2",
     "express": "4.14.1",
     "grunt": "^1.0.1",
     "grunt-contrib-jshint": "1.1.0",
@@ -40,6 +36,9 @@
     "grunt-env": "0.4.4",
     "grunt-istanbul": "0.7.2",
     "grunt-coveralls": "1.0.1",
-    "http-proxy": "1.16.2"
+    "http-proxy": "1.16.2",
+    "jshint": "2.9.4",
+    "mocha": "3.2.0",
+    "shelljs": "0.7.5"
   }
 }

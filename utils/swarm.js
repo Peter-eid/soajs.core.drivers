@@ -292,11 +292,17 @@ const lib = {
 
             if (options.service.Endpoint && options.service.Endpoint.Ports && options.service.Endpoint.Ports.length > 0) {
                 options.service.Endpoint.Ports.forEach((onePortConfig) => {
-                    record.ports.push({
+                    let port = {
                         protocol: onePortConfig.Protocol,
                         target: onePortConfig.TargetPort,
                         published: onePortConfig.PublishedPort
-                    });
+                    };
+
+                    if(onePortConfig.PublishMode && onePortConfig.PublishMode === 'host') {
+                        port.preserveClientIP = true;
+                    }
+
+                    record.ports.push(port);
                 });
             }
         }
@@ -341,7 +347,8 @@ const lib = {
                 if (options.task.Version && options.task.Version.Index) {
                     record.version = options.task.Version.Index;
                 }
-                if (options.serviceName && options.task.Slot) {
+
+                if (options.serviceName) {
                     record.name = options.serviceName + ((options.task.Slot) ? '.' + options.task.Slot : ''); //might add extra value later
                 }
                 if (options.task.Slot) {
