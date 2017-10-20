@@ -21,7 +21,24 @@ const kubeLib = {
     },
 
     getDeployer(options, cb) {
-        let kubeURL = config.kubernetes.apiHost;
+        options.deployerConfig.clusters = {
+            qa: {
+                host: "192.168.99.102",
+                port: 8443
+            }
+        };
+
+        if(options && options.params && options.params.env) {
+            options.params.env = options.params.env;
+        }
+        else if(options && options.env){
+            if(!options.params) options.params = {};
+
+            options.params.env = options.env;
+        }
+
+        // let kubeURL = config.kubernetes.apiHost;
+        let kubeURL = `https://${options.deployerConfig.clusters[options.params.env.toLowerCase()].host}:${options.deployerConfig.clusters[options.params.env.toLowerCase()].port}`;
 
         let kubernetes = {};
         let kubeConfig = {
