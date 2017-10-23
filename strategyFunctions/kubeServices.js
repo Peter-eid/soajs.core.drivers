@@ -187,7 +187,7 @@ var engine = {
 
                             record.tasks = pods;
 
-                            options.params = { id: oneDeployment.metadata.name };
+                            options.params.id = oneDeployment.metadata.name;
                             autoscaler.getAutoscaler(options, (error, hpa) => {
                                 if (error) {
                                     return callback(error);
